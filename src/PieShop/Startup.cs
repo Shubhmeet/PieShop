@@ -8,32 +8,69 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PieShop.Models;
+using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore;
 
 namespace PieShop
 {
     public class Startup
     {
+        private IConfigurationRoot _configurationRoot;
+
+        public Startup(IHostingEnvironment hostingEnvironment)
+        {
+            _configurationRoot = new ConfigurationBuilder()
+                           .SetBasePath(hostingEnvironment.ContentRootPath)
+                           .AddJsonFile("appsettings.json")
+                           .Build();
+        }
+
         // This method gets called by the runtime. Use this method to add services to the container.
         // For more information on how to configure your application, visit http://go.microsoft.com/fwlink/?LinkID=398940
         public void ConfigureServices(IServiceCollection services)
         {
-            //dependency injection
-            services.AddTransient<ICategoryRepository, MockCategoryRepository>();
-            services.AddTransient<IPieRepository, MockPieRepository>();
+
+            services.AddDbContext<AppDbContext>(options =>
+                                         options.UseSqlServer(_configurationRoot.GetConnectionString("DefaultConnection")));
+
+            //services.AddTransient<ICategoryRepository, MockCategoryRepository>();
+            //services.AddTransient<IPieRepository, MockPieRepository>();
+
+            services.AddTransient<IPieRepository, PieRepository>();
+            services.AddTransient<ICategoryRepository, CategoryRepository>();
+            services.AddSingleton<IHttpContextAccessor,HttpContextAccessor>();
+            services.AddScoped<ShoppingCart>(sp => ShoppingCart.GetCart(sp));
             services.AddMvc();
+            services.AddMemoryCache();
+            services.AddSession();
+
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory)
         {
-            // for showing user defined errors
             app.UseDeveloperExceptionPage();
-            //allows to handle status code bw 400-600
             app.UseStatusCodePages();
-            //server static files
             app.UseStaticFiles();
-            //adding support for mvc, basic route 
-            app.UseMvcWithDefaultRoute();
+            //add here only otherwise wont work
+
+            app.UseSession();
+            //app.UseMvcWithDefaultRoute();
+
+            app.UseMvc(routes =>
+            {
+                routes.MapRoute(
+                    name:"categoryfilter",
+                    template:"Pie/{action}/{category?}",
+                    defaults: new {Controller ="Pie",action="List"}
+                    );
+
+                routes.MapRoute(
+                    name: "default",
+                    template: "{controller=Home}/{action=Index}/{id?}");
+            });
+            DbInitializer.Seed(app);
+            
         }
     }
 }
